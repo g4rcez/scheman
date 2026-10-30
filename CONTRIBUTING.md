@@ -27,3 +27,12 @@ swift test
 3. Open a pull request and fill in the template.
 
 By contributing, you agree that your work is under the [MIT license](LICENSE).
+
+## Releases
+
+Releases are automatic (`.github/workflows/release.yml`):
+
+- A merge to `main` releases the next patch version.
+- For a minor or major version, push a tag: `git tag v0.2.0 && git push origin v0.2.0`.
+
+Each release builds a universal (arm64 and x86_64) binary, publishes it on the GitHub release, and updates `Formula/scheman.rb`.

@@ -1,0 +1,91 @@
+name: Release
+
+# A pushed `vX.Y.Z` tag releases that version.
+# A push to main (a merged PR) releases the next patch version, unless the commit is already tagged.
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+    branches: [main]
+    paths-ignore: ["Formula/**"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Pick version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            tag="$GITHUB_REF_NAME"
+          else
+            if git tag --points-at HEAD | grep -q '^v[0-9]'; then
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            latest="$(git tag -l 'v[0-9]*' --sort=-v:refname | head -n1)"
+            IFS=. read -r major minor patch <<< "${latest:-v0.0.0}"
+            tag="$major.$minor.$((patch + 1))"
+            tag="v${tag#v}"
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Set version in source
+        if: steps.version.outputs.skip != 'true'
+        run: sed -i '' 's/^let version = ".*"/let version = "${{ steps.version.outputs.version }}"/' Sources/scheman/CLI.swift
+
+      - name: Test
+        if: steps.version.outputs.skip != 'true'
+        run: swift test
+
+      - name: Build universal binary
+        if: steps.version.outputs.skip != 'true'
+        run: swift build -c release --arch arm64 --arch x86_64
+
+      - name: Package
+        if: steps.version.outputs.skip != 'true'
+        id: package
+        run: |
+          name="scheman-${{ steps.version.outputs.version }}-macos-universal"
+          bin="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/scheman"
+          [[ "$("$bin" --version)" == "scheman ${{ steps.version.outputs.version }}" ]]
+          tar -czf "$name.tar.gz" -C "$(dirname "$bin")" scheman -C "$PWD" LICENSE README.md
+          shasum -a 256 "$name.tar.gz" | tee "$name.tar.gz.sha256"
+          echo "asset=$name.tar.gz" >> "$GITHUB_OUTPUT"
+          echo "sha=$(shasum -a 256 "$name.tar.gz" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        if: steps.version.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --target "$GITHUB_SHA" --generate-notes \
+            "${{ steps.package.outputs.asset }}" "${{ steps.package.outputs.asset }}.sha256"
+
+      - name: Update Homebrew formula
+        if: steps.version.outputs.skip != 'true'
+        run: |
+          git checkout -- Sources/scheman/CLI.swift
+          git fetch origin main
+          git checkout -B main origin/main
+          tag="${{ steps.version.outputs.tag }}"
+          url="https://github.com/${{ github.repository }}/releases/download/$tag/${{ steps.package.outputs.asset }}"
+          perl -pi -e "s|^  url .*|  url \"$url\"|; s|^  sha256 .*|  sha256 \"${{ steps.package.outputs.sha }}\"|" Formula/scheman.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/scheman.rb
+          git commit -m "Update formula to $tag"
+          git push origin main

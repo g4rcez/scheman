@@ -15,7 +15,7 @@ brew tap g4rcez/scheman https://github.com/g4rcez/scheman
 brew install scheman
 ```
 
-From source:
+Prebuilt universal binaries are on the [releases page](https://github.com/g4rcez/scheman/releases). From source:
 
 ```sh
 swift build -c release
