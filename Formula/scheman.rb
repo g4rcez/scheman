@@ -2,7 +2,7 @@ class Scheman < Formula
   desc "List and set default apps for URL schemes and file types on macOS"
   homepage "https://github.com/g4rcez/scheman"
   url "https://github.com/g4rcez/scheman/archive/refs/tags/v0.1.0.tar.gz"
-  sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+  sha256 "5e3c45f46f859e7fbbd3a11b76ca6d63992a7d39103f09e3b5e2c190929beb28"
   license "MIT"
   head "https://github.com/g4rcez/scheman.git", branch: "main"
 
